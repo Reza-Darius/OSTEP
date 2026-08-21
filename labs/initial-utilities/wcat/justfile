@@ -1,0 +1,7 @@
+target := "wcat"
+
+build:
+    gcc -o {{ target }} wcat.c -Wall -Werror
+
+run arg: build
+    ./{{ target }} {{ arg }}

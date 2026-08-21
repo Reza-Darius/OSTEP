@@ -1,0 +1,5 @@
+build:
+    gcc -o wgrep wgrep.c -Wall -Werror
+
+run arg1 arg2: build
+    ./wgrep  {{ arg1 }} {{ arg2 }}
