@@ -1,0 +1,23 @@
+// 1
+Utilization should be 100%
+
+// 2
+The time it takes to complete both processes is the sum of process 0 and 1 as they run
+one after the other
+
+// 3
+Switching the order cuts down the time as process 1 can run while process 0 is blocked
+
+// 4
+Not switching means we are back to the situation in question 2
+
+// 5
+Now we are back to 3
+
+// 6
+System resources are poorly utilized, the process that performs I/O cant queue up
+it's next IO operations until its scheduled again, so I/O that could potentially run in parallel gets delayed
+
+// 7
+Immediately scheduling the I/O process improves system utilization because I/O can run
+in parallel to CPU bound tasks.
