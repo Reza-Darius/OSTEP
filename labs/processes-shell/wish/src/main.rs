@@ -1,10 +1,12 @@
-#![allow(dead_code)]
+#![allow(dead_code, static_mut_refs)]
 
 use anyhow::{Result, anyhow};
 use std::{
     io::{BufRead, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
+
+static mut PATHS: Vec<PathBuf> = const { Vec::new() };
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -17,14 +19,15 @@ fn main() -> Result<()> {
 
 fn interactive_mode() -> Result<()> {
     const PROMPT: &str = "wish> ";
+    add_path("/bin");
 
     let mut input_line = String::new();
     let mut stdin = std::io::stdin().lock();
-    let mut stdout = std::io::stdout().lock();
+    // we can hold the lock because stdout is reentrant
 
     loop {
-        stdout.write_all(PROMPT.as_bytes())?;
-        stdout.flush()?;
+        print_prompt(PROMPT);
+
         stdin.read_line(&mut input_line)?;
 
         if let Ok(cmds) = parse_line(&input_line) {
@@ -40,6 +43,12 @@ fn interactive_mode() -> Result<()> {
 
         input_line.clear();
     }
+}
+
+fn print_prompt(prompt: &str) {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(prompt.as_bytes()).expect("this cant fail");
+    stdout.flush().expect("this cant fail");
 }
 
 enum Command<'a> {
@@ -90,29 +99,28 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
             }
             "pwd" => Ok(Command::BuiltIn(BuiltInCmd::Pwd)),
             "path" => {
-                let paths: Vec<&Path> = tokens.map(Path::new).collect();
-
-                Ok(Command::BuiltIn(BuiltInCmd::Path(if paths.is_empty() {
-                    None
+                let paths = if tokens.peek().is_some() {
+                    Some(tokens.map(Path::new).collect())
                 } else {
-                    Some(paths)
-                })))
+                    None
+                };
+
+                Ok(Command::BuiltIn(BuiltInCmd::Path(paths)))
             }
             path => {
+                if path.is_empty() {
+                    return Err(anyhow!("bad input: empty string"));
+                }
+
+                // take_while() consumes the ">" token if its in there
                 let args: Vec<&str> = tokens.by_ref().take_while(|&token| token != ">").collect();
                 let mut redirect = None;
 
-                if let Some(red_op) = tokens.next()
-                {
-                    assert_eq!(red_op, ">");
-
-                    // skipping redirect operator
-                    tokens.next();
-
-                    let Some(red_path) = tokens.next() else {
-                        return Err(anyhow!("no path for redirection provided"));
-                    };
+                if let Some(red_path) = tokens.next() {
                     redirect = Some(Path::new(red_path));
+                    if tokens.next().is_some() {
+                        return Err(anyhow!("bad input: too many arguments for redirect"));
+                    }
                 }
 
                 Ok(Command::Run {
@@ -133,11 +141,12 @@ fn exec_cmd(cmd: Command) -> Result<()> {
             BuiltInCmd::Exit => {
                 println!("executing exit");
                 std::process::exit(0)
-            },
+            }
             BuiltInCmd::Cd(directory) => {
                 println!("executing cd for {}", directory.display());
+                // do we need to concat with cwd? doesnt seem to be the case
                 std::env::set_current_dir(directory).map_err(Into::into)
-            },
+            }
             BuiltInCmd::Pwd => {
                 println!("{}", std::env::current_dir()?.display());
                 Ok(())
@@ -148,6 +157,52 @@ fn exec_cmd(cmd: Command) -> Result<()> {
             path,
             args,
             redirect,
-        } => todo!(),
+        } => {
+            println!(
+                "running program {}, {:?}, {:?}",
+                path.display(),
+                args,
+                redirect
+            );
+
+            // TODO: handle redirect
+
+            let path = search_path(path)?;
+            println!("found program: {}", path.display());
+
+            let mut child = std::process::Command::new(path).args(args).spawn()?;
+            child.wait()?;
+            Ok(())
+        }
     }
+}
+
+fn add_path(path: impl Into<PathBuf>) {
+    // SAFETY: the shell is single threaded
+    unsafe {
+        PATHS.push(path.into());
+    };
+}
+
+fn search_path(program: impl AsRef<Path>) -> Result<PathBuf> {
+    let program = program.as_ref();
+
+    // SAFETY: the shell is single threaded
+    let paths = unsafe { PATHS.iter() };
+
+    for path in paths {
+        let dir_iter = std::fs::read_dir(path)?;
+        for entry in dir_iter {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            if entry.file_name() == program {
+                let path = entry.path();
+
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(anyhow!("couldnt find program"))
 }
