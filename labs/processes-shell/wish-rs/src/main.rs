@@ -111,13 +111,9 @@ enum Command<'a> {
     Run {
         path: &'a Path,
         args: Vec<&'a str>,
-        redirect: Option<Redirect<'a>>,
+        redirect: Option<&'a Path>,
     },
 }
-
-// we might have a redirect without an argument
-#[derive(Debug)]
-struct Redirect<'a>(Option<&'a Path>);
 
 enum BuiltInCmd<'a> {
     Exit,
@@ -178,16 +174,15 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
 
                 while let Some(token) = tokens.next() {
                     if token == ">" {
-                        let red_path = tokens.next().map(Path::new);
-                        redirect = Some(Redirect(red_path));
+                        if let Some(path) = tokens.next().map(Path::new) {
+                            redirect = Some(path)
+                        } else {
+                            return Err(anyhow!("bad input: no argument for redirect"));
+                        }
                     } else {
                         args.push(token);
                     }
                 }
-
-                // // take_while() consumes the ">" token if its in there
-                // let args: Vec<&str> = tokens.by_ref().take_while(|&token| token != ">").collect();
-                // let redirect = tokens.next().map(Path::new);
 
                 if tokens.next().is_some() {
                     return Err(anyhow!("bad input: too many arguments for redirect"));
@@ -256,25 +251,12 @@ fn exec_cmd(cmd: Command) -> Result<Option<Child>> {
             let mut cmd = std::process::Command::new(path);
             cmd.args(args);
 
-            match redirect {
-                // empty redirect ignores the output
-                Some(Redirect(None)) => {
-                    return Err(anyhow!("cant have empty redirect"))
-                    // cmd.stdout(Stdio::null());
-                },
-                Some(Redirect(Some(path))) => {
-                    let file = std::fs::File::create(path)?;
-                    cmd.stdout(file);
-                }
-                None => {}
-            }
-
-            // // in case of a redirect, we point the child's stdout to the file
-            // // otherwise the child's stdout points to the parent's stdout
-            // if let Some(red) = redirect {
-            //     let file = std::fs::File::create(red)?;
-            //     cmd.stdout(file);
-            // };
+            // in case of a redirect, we point the child's stdout to the file
+            // otherwise the child's stdout points to the parent's stdout
+            if let Some(red) = redirect {
+                let file = std::fs::File::create(red)?;
+                cmd.stdout(file);
+            };
 
             // spawn child process
             let child = cmd.spawn()?;
