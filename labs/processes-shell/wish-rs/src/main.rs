@@ -5,7 +5,7 @@ use std::{
     collections::VecDeque,
     io::{BufRead, Write},
     path::{Path, PathBuf},
-    process::{Child, Stdio},
+    process::Child,
 };
 
 static mut PATHS: Vec<PathBuf> = const { Vec::new() };
@@ -169,24 +169,53 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
                 Ok(Command::BuiltIn(BuiltInCmd::Path(paths)))
             }
             path if !path.is_empty() => {
-                let mut args: Vec<&str> = Vec::new();
+                let mut red_tokens = cmd.split('>');
+                let args: Vec<&str> = red_tokens
+                    .next()
+                    .expect("we know there is one token")
+                    .split_whitespace()
+                    .skip(1)
+                    .collect();
                 let mut redirect = None;
 
-                while let Some(token) = tokens.next() {
-                    if token == ">" {
-                        if let Some(path) = tokens.next().map(Path::new) {
-                            redirect = Some(path)
-                        } else {
-                            return Err(anyhow!("bad input: no argument for redirect"));
-                        }
-                    } else {
-                        args.push(token);
+                if let Some(red) = red_tokens.next() {
+                    if red.is_empty() {
+                        return Err(anyhow!("bad input: no argument for redirect"));
                     }
-                }
+                    let mut red = red.split_whitespace();
+                    if let Some(red_path) = red.next().map(Path::new) {
+                        redirect = Some(red_path)
+                    } else {
+                        return Err(anyhow!("bad input: no argument for redirect"));
+                    }
+                    if red.next().is_some() {
+                        return Err(anyhow!("bad input: too many arguments for redirect"));
+                    }
+                };
 
-                if tokens.next().is_some() {
+                if red_tokens.next().is_some() {
                     return Err(anyhow!("bad input: too many arguments for redirect"));
                 }
+
+                // let mut args: Vec<&str> = Vec::new();
+                // let mut redirect = None;
+                //
+                // while let Some(token) = tokens.next() {
+                //     if token == ">" {
+                //         if let Some(path) = tokens.next().map(Path::new) {
+                //             redirect = Some(path)
+                //         } else {
+                //             return Err(anyhow!("bad input: no argument for redirect"));
+                //         }
+                //         break;
+                //     } else {
+                //         args.push(token);
+                //     }
+                // }
+                //
+                // if tokens.next().is_some() {
+                //     return Err(anyhow!("bad input: too many arguments for redirect"));
+                // }
 
                 Ok(Command::Run {
                     path: Path::new(path),
