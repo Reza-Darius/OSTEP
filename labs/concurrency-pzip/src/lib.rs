@@ -1,55 +1,49 @@
 use error::Result;
-use std::{
-    ffi::c_void,
-    fs::metadata,
-    io::Read,
-    os::{
-        fd::{AsRawFd, OwnedFd},
-        unix::fs::MetadataExt,
-    },
-    path::Path,
-};
+use std::{ffi::CString, fs::metadata, os::unix::fs::MetadataExt, path::Path};
 
-use crate::error::AppError;
-
-mod error;
+pub mod error;
 
 pub struct FileMap {
-    file: OwnedFd,
+    fd: i32,
     len: usize,
     map: *const u8,
 }
 
 impl FileMap {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
-        let path = path.as_ref();
-        let file: OwnedFd = std::fs::File::open(path)?.into();
-        let len = metadata(path)?.size() as usize;
+        let len = metadata(&path)?.size() as usize;
+        let path = CString::new(path.as_ref().to_str().unwrap())?;
 
         unsafe {
+            let fd = libc::open(path.as_ptr(), libc::O_RDONLY);
+            if fd < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+
             let map = libc::mmap(
                 std::ptr::null_mut(),
                 len,
-                libc::MAP_PRIVATE,
                 libc::PROT_READ,
-                file.as_raw_fd(),
+                libc::MAP_PRIVATE,
+                fd,
                 0,
             );
             if map == libc::MAP_FAILED {
-                return Err(AppError::new(std::io::Error::last_os_error()));
+                return Err(std::io::Error::last_os_error().into());
             }
-            let rc = libc::madvise(map, len, libc::MADV_SEQUENTIAL);
+            let rc = libc::madvise(map, len, libc::MADV_SEQUENTIAL | libc::MADV_WILLNEED);
             if rc == -1 {
-                return Err(AppError::new(std::io::Error::last_os_error()));
+                return Err(std::io::Error::last_os_error().into());
             }
 
             Ok(FileMap {
-                file,
+                fd,
                 len,
                 map: map as *const u8,
             })
         }
     }
+
     pub fn as_slice(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.map, self.len) }
     }
@@ -58,10 +52,11 @@ impl FileMap {
 impl Drop for FileMap {
     fn drop(&mut self) {
         unsafe {
-            let rc = libc::munmap(self.map as *mut c_void, self.len);
+            let rc = libc::munmap(self.map as *mut _, self.len);
             if rc == -1 {
                 eprintln!("filemap drop error {}", std::io::Error::last_os_error());
             }
+            libc::close(self.fd);
         }
     }
 }
@@ -111,6 +106,7 @@ pub fn comps(input: &[u8]) -> Vec<u8> {
     s.extend_from_slice(&count.to_le_bytes());
     s.push(char);
 
+    debug_assert!(s.len() % 5 == 0);
     s
 }
 
@@ -160,12 +156,20 @@ pub fn compv(input: &[u8]) -> Vec<u8> {
     s.extend_from_slice(&count.to_le_bytes());
     s.push(char);
 
+    debug_assert!(s.len() % 5 == 0);
     s
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+
+    fn test_file(input: &str) -> FileMap {
+        const TEST_FILE: &str = "./test_file.txt";
+
+        std::fs::write(TEST_FILE, input.as_bytes()).unwrap();
+        FileMap::new(TEST_FILE).unwrap()
+    }
 
     #[test]
     fn comp_test() {
@@ -179,5 +183,50 @@ mod test {
 
         assert_eq!(res, comps(input.as_bytes()));
         assert_eq!(res, compv(input.as_bytes()));
+    }
+
+    #[test]
+    fn comp_test2() {
+        let input = "aaaaaaaaaa";
+        let mut res = Vec::new();
+
+        res.extend_from_slice(&u32::to_le_bytes(10));
+        res.push(b'a');
+
+        assert_eq!(res, comps(input.as_bytes()));
+        assert_eq!(res, compv(input.as_bytes()));
+    }
+
+    #[test]
+    fn coalesce_test() {
+        let input = "aaaaaaaaaabbbb";
+        let input2 = "bbbbaaa";
+        let mut res = Vec::new();
+
+        // expected output: 10a8b3a
+        res.extend_from_slice(&u32::to_le_bytes(10));
+        res.push(b'a');
+        res.extend_from_slice(&u32::to_le_bytes(8));
+        res.push(b'b');
+        res.extend_from_slice(&u32::to_le_bytes(3));
+        res.push(b'a');
+
+        let coal = coalesce(compv(input.as_bytes()), compv(input2.as_bytes()));
+        assert_eq!(res, coal);
+    }
+
+    #[test]
+    fn comp_test_file() {
+        let input = "aaaaaaaaaabbbb";
+        let file_map = test_file(input);
+
+        let mut res = Vec::new();
+        res.extend_from_slice(&u32::to_le_bytes(10));
+        res.push(b'a');
+        res.extend_from_slice(&u32::to_le_bytes(4));
+        res.push(b'b');
+
+        assert_eq!(res, comps(file_map.as_slice()));
+        assert_eq!(res, compv(file_map.as_slice()));
     }
 }
