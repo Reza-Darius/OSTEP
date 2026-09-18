@@ -1,6 +1,6 @@
 #![allow(dead_code, static_mut_refs)]
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use std::{
     collections::VecDeque,
     io::{BufRead, Write},
@@ -28,6 +28,7 @@ fn main() -> Result<()> {
     if res.is_err() {
         eprintln!("{ERR_MSG}");
         // eprintln!("{:?}", res);
+        std::process::exit(1)
     }
     Ok(())
 }
@@ -37,22 +38,28 @@ fn batch_mode(args: impl Iterator<Item = impl AsRef<str>>) -> Result<()> {
 
     for arg in args {
         let arg = arg.as_ref();
-        let file =
-            std::fs::read_to_string(arg).with_context(|| anyhow!("failed to read file {}", arg))?;
+        let file = std::fs::read_to_string(arg)?;
 
         for line in file.lines() {
-            let Ok(cmds) = parse_line(line) else {
-                eprintln!("{ERR_MSG}");
+            if line.trim().is_empty() {
                 continue;
+            }
+
+            let cmd_iter = match parse_line(line) {
+                Ok(cmd) => cmd,
+                Err(_) => {
+                    eprintln!("{ERR_MSG}");
+                    continue;
+                }
             };
 
-            for cmd in cmds {
+            for cmd in cmd_iter {
                 match exec_cmd(cmd) {
                     Ok(Some(child)) => {
                         children.push_back(child);
                     }
                     Err(_) => eprintln!("{ERR_MSG}"),
-                    _ => {} // res => eprintln!("exec cmd error {:?}", res),
+                    _ => {}
                 }
             }
 
@@ -71,7 +78,6 @@ fn interactive_mode() -> Result<()> {
 
     loop {
         print_prompt(PROMPT);
-
         stdin.read_line(&mut input_line)?;
 
         if let Ok(cmds) = parse_line(&input_line) {
@@ -79,10 +85,8 @@ fn interactive_mode() -> Result<()> {
                 match exec_cmd(cmd) {
                     Ok(Some(child)) => children.push_back(child),
                     Ok(None) => {}
-                    Err(e) => {
+                    Err(_) => {
                         eprintln!("{ERR_MSG}");
-                        // eprintln!("{e}");
-
                         break;
                     }
                 }
@@ -95,8 +99,8 @@ fn interactive_mode() -> Result<()> {
         while let Some(mut child) = children.pop_front() {
             child.wait()?;
         }
+
         input_line.clear();
-        // return Ok(());
     }
 }
 
@@ -106,7 +110,13 @@ fn print_prompt(prompt: &str) {
     stdout.flush().expect("this cant fail");
 }
 
+fn err() -> ! {
+    eprintln!("{ERR_MSG}");
+    std::process::exit(1)
+}
+
 enum Command<'a> {
+    Noop,
     BuiltIn(BuiltInCmd<'a>),
     Run {
         path: &'a Path,
@@ -131,11 +141,7 @@ fn parse_line(line: &str) -> Result<impl Iterator<Item = Command<'_>>> {
         res.push(parse_command(cmd)?);
     }
 
-    if res.is_empty() {
-        Err(anyhow!(""))
-    } else {
-        Ok(res.into_iter())
-    }
+    Ok(res.into_iter())
 }
 
 fn parse_command(cmd: &str) -> Result<Command<'_>> {
@@ -174,7 +180,7 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
                     .next()
                     .expect("we know there is one token")
                     .split_whitespace()
-                    .skip(1)
+                    .skip(1) // skip the program name
                     .collect();
                 let mut redirect = None;
 
@@ -197,26 +203,6 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
                     return Err(anyhow!("bad input: too many arguments for redirect"));
                 }
 
-                // let mut args: Vec<&str> = Vec::new();
-                // let mut redirect = None;
-                //
-                // while let Some(token) = tokens.next() {
-                //     if token == ">" {
-                //         if let Some(path) = tokens.next().map(Path::new) {
-                //             redirect = Some(path)
-                //         } else {
-                //             return Err(anyhow!("bad input: no argument for redirect"));
-                //         }
-                //         break;
-                //     } else {
-                //         args.push(token);
-                //     }
-                // }
-                //
-                // if tokens.next().is_some() {
-                //     return Err(anyhow!("bad input: too many arguments for redirect"));
-                // }
-
                 Ok(Command::Run {
                     path: Path::new(path),
                     args,
@@ -226,20 +212,18 @@ fn parse_command(cmd: &str) -> Result<Command<'_>> {
             _ => Err(anyhow!("bad input")),
         }
     } else {
-        Err(anyhow!("no command provided"))
+        Ok(Command::Noop)
     }
 }
 
 fn exec_cmd(cmd: Command) -> Result<Option<Child>> {
     match cmd {
+        Command::Noop => Ok(None),
         Command::BuiltIn(built_in_cmd) => match built_in_cmd {
             BuiltInCmd::Exit => {
-                // println!("executing exit");
                 std::process::exit(0)
             }
             BuiltInCmd::Cd(directory) => {
-                // println!("executing cd for {}", directory.display());
-
                 // do we need to concat with cwd? doesnt seem to be the case
                 std::env::set_current_dir(directory)?;
                 Ok(None)
@@ -275,7 +259,6 @@ fn exec_cmd(cmd: Command) -> Result<Option<Child>> {
 
             // find program in PATHs
             let path = search_path(path)?;
-            // println!("found program: {}", path.display());
 
             let mut cmd = std::process::Command::new(path);
             cmd.args(args);
