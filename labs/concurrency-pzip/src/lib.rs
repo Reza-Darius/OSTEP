@@ -121,7 +121,7 @@ pub fn compv(input: &[u8]) -> Vec<u8> {
     let (chunks, remainder) = input.as_chunks::<LANES>();
 
     let mut char = input[0];
-    let cmp_arr = [char; LANES];
+    let mut cmp_arr = [char; LANES];
     let mut count: u32 = 0;
 
     for chunk in chunks {
@@ -137,6 +137,7 @@ pub fn compv(input: &[u8]) -> Vec<u8> {
                 s.push(char);
                 count = 1;
                 char = byte;
+                cmp_arr = [char; LANES];
             }
         }
     }
