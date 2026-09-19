@@ -1,2 +1,2 @@
 build:
-  gcc -Wall -Werror -g -o wzip wzip.c
+  gcc -Wall -Werror -o wzip wzip.c -O3

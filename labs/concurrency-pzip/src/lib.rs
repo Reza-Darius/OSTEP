@@ -9,6 +9,10 @@ pub struct FileMap {
     map: *const u8,
 }
 
+// SAFETY: threads only have read access
+unsafe impl Send for FileMap {}
+unsafe impl Sync for FileMap {}
+
 impl FileMap {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
         let len = metadata(&path)?.size() as usize;
@@ -47,6 +51,11 @@ impl FileMap {
     pub fn as_slice(&self) -> &[u8] {
         unsafe { std::slice::from_raw_parts(self.map, self.len) }
     }
+
+    #[allow(clippy::len_without_is_empty)]
+    pub fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl Drop for FileMap {
@@ -61,7 +70,15 @@ impl Drop for FileMap {
     }
 }
 
-pub fn coalesce(mut a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
+pub fn stitch(mut data: Vec<Vec<u8>>) -> Vec<u8> {
+    let mut r = data.remove(0);
+    for res in data {
+        r = coalesce(r, res);
+    }
+    r
+}
+
+fn coalesce(mut a: Vec<u8>, b: Vec<u8>) -> Vec<u8> {
     debug_assert!(a.len() >= 5);
     debug_assert!(b.len() >= 5);
 
