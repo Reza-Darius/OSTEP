@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::io::Write;
+use std::path::Path;
 use std::sync::Arc;
 
 use concurrency_pzip::error::Result;
@@ -12,12 +13,12 @@ fn main() -> Result<()> {
         std::process::exit(1)
     }
 
-    let files: Vec<FileMap> = args
-        .iter()
-        .map(FileMap::new)
-        .collect::<Result<Vec<FileMap>>>()?;
+    // let files: Vec<FileMap> = args
+    //     .iter()
+    //     .map(FileMap::new)
+    //     .collect::<Result<Vec<FileMap>>>()?;
 
-    mt_dispatch(files.into_iter(), 10)
+    mt_dispatch(args, 10)
 }
 
 fn st_dispatch(files: impl Iterator<Item = FileMap>) -> Result<()> {
@@ -31,15 +32,17 @@ fn st_dispatch(files: impl Iterator<Item = FileMap>) -> Result<()> {
     Ok(())
 }
 
-fn mt_dispatch(files: impl Iterator<Item = FileMap>, part_factor: u8) -> Result<()> {
+fn mt_dispatch(args: impl IntoIterator<Item = impl AsRef<Path>>, part_factor: u8) -> Result<()> {
     // threshhold in bytes at which a file gets split among multiple threads
+    // T = 1000, pf = 2: file with len >= T gets two threads with 500 bytes to work with
     const THRESHHOLD: usize = 1000;
     let part_factor = u8::max(1, part_factor);
 
     let results = std::thread::scope(move |s| {
         let mut handles = Vec::new();
 
-        for file in files {
+        for arg in args {
+            let file = FileMap::new(arg).unwrap();
             if file.len() >= THRESHHOLD {
                 // len = 107
                 // part_factor = 2
@@ -49,21 +52,21 @@ fn mt_dispatch(files: impl Iterator<Item = FileMap>, part_factor: u8) -> Result<
                 //
                 // remainder thread after loop:
                 // slice[53..0]
-                let workset_len = file.len() / part_factor as usize;
+                let len_workset = file.len() / part_factor as usize;
                 let file = Arc::new(file);
 
                 for n in 0..part_factor - 1 {
                     let f_clone = file.clone();
-                    let offset = n as usize * workset_len;
+                    let offset = n as usize * len_workset;
 
                     handles.push(s.spawn(move || {
-                        let slice = &f_clone.as_slice()[offset..offset + workset_len];
+                        let slice = &f_clone.as_slice()[offset..offset + len_workset];
                         compv(slice)
                     }));
                 }
 
                 // the last work set has to account for remainder
-                let offset = (part_factor as usize - 1) * workset_len;
+                let offset = (part_factor as usize - 1) * len_workset;
                 handles.push(s.spawn(move || {
                     let slice = &file.as_slice()[offset..];
                     compv(slice)
