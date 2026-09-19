@@ -34,7 +34,7 @@ fn st_dispatch(files: impl Iterator<Item = FileMap>) -> Result<()> {
 
 fn mt_dispatch(args: impl IntoIterator<Item = impl AsRef<Path>>, part_factor: u8) -> Result<()> {
     // threshhold in bytes at which a file gets split among multiple threads
-    // T = 1000, pf = 2: file with len >= T gets two threads with 500 bytes to work with
+    // T = 1000, pf = 2: file with len >= T gets two threads with at least 500 bytes to work with
     const THRESHHOLD: usize = 1000;
     let part_factor = u8::max(1, part_factor);
 
