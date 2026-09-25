@@ -132,7 +132,7 @@ fn round_pow2(n: usize) -> usize {
     }
 
     // if the left-most bit is set we can only round down
-    if (n & (1 << 63)) > 0 {
+    if (n & (1 << 63)) != 0 {
         return 1 << 63;
     }
 
