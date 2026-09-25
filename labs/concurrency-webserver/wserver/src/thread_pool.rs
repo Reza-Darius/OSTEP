@@ -23,12 +23,16 @@ impl<T> Queue<T> {
         let cap = round_pow2(cap);
         debug_assert!(cap.is_power_of_two(), "cap needs to be power of two");
 
-        Queue {
+        let mut q = Queue {
             data: Vec::with_capacity(cap),
             head: 0,
             tail: 0,
             len: 0,
-        }
+        };
+        unsafe {
+            q.data.set_len(cap);
+        };
+        q
     }
 
     pub fn push_front(&mut self, val: T) {
@@ -37,12 +41,13 @@ impl<T> Queue<T> {
         }
 
         if self.is_empty() {
-            self.push_front(val);
+            self.push_back(val);
             return;
         }
 
-        self.head -= 1;
-        self.data[self.head].write(val);
+        self.head = self.head.overflowing_sub(1).0;
+        let i = self.hi();
+        self.data[i].write(val);
         self.len += 1;
     }
 
@@ -50,8 +55,9 @@ impl<T> Queue<T> {
         if self.is_full() {
             panic!("queue is full")
         }
-        self.data[self.tail].write(val);
-        self.tail += 1;
+        let i = self.ti();
+        self.data[i].write(val);
+        self.tail = self.tail.overflowing_add(1).0;
         self.len += 1;
     }
 
@@ -60,11 +66,12 @@ impl<T> Queue<T> {
             return None;
         }
 
+        let i = self.hi();
         let element = unsafe {
             // swap out element with uninit maybeuninit
-            std::mem::replace(&mut self.data[self.head], MaybeUninit::uninit()).assume_init()
+            std::mem::replace(&mut self.data[i], MaybeUninit::uninit()).assume_init()
         };
-        self.head += 1;
+        self.head = self.head.overflowing_add(1).0;
         self.len -= 1;
         Some(element)
     }
@@ -73,10 +80,11 @@ impl<T> Queue<T> {
         if self.is_empty() {
             return None;
         }
-        self.tail -= 1;
+        self.tail = self.tail.overflowing_sub(1).0;
+        let i = self.ti();
         let element = unsafe {
             // swap out element with uninit maybeuninit
-            std::mem::replace(&mut self.data[self.tail], MaybeUninit::uninit()).assume_init()
+            std::mem::replace(&mut self.data[i], MaybeUninit::uninit()).assume_init()
         };
         self.len -= 1;
         Some(element)
@@ -94,8 +102,24 @@ impl<T> Queue<T> {
         self.len
     }
 
+    // head index
+    fn hi(&self) -> usize {
+        self.idx(self.head)
+    }
+
+    // tail index
+    fn ti(&self) -> usize {
+        self.idx(self.tail)
+    }
+
     fn idx(&self, i: usize) -> usize {
         i & (self.data.capacity() - 1)
+    }
+}
+
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        while self.pop_front().is_some() {}
     }
 }
 
@@ -138,5 +162,166 @@ mod test {
         assert_eq!(round_pow2(0), 0);
         assert_eq!(round_pow2((1 << 63) + 10), 1 << 63);
         assert_eq!(round_pow2(1000), 1024);
+    }
+    #[test]
+    fn new_queue_is_empty() {
+        let q = Queue::<i32>::new(8);
+
+        assert!(q.is_empty());
+        assert!(!q.is_full());
+        assert_eq!(q.len(), 0);
+    }
+
+    #[test]
+    fn push_back_and_pop_front_fifo() {
+        let mut q = Queue::new(4);
+
+        q.push_back(1);
+        q.push_back(2);
+        q.push_back(3);
+
+        assert_eq!(q.len(), 3);
+        assert_eq!(q.pop_front(), Some(1));
+        assert_eq!(q.pop_front(), Some(2));
+        assert_eq!(q.pop_front(), Some(3));
+        assert_eq!(q.pop_front(), None);
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn push_front_and_pop_back_lifo() {
+        let mut q = Queue::new(4);
+
+        q.push_front(1);
+        q.push_front(2);
+        q.push_front(3);
+
+        assert_eq!(q.len(), 3);
+        assert_eq!(q.pop_back(), Some(1));
+        assert_eq!(q.pop_back(), Some(2));
+        assert_eq!(q.pop_back(), Some(3));
+        assert_eq!(q.pop_back(), None);
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn push_back_and_pop_back() {
+        let mut q = Queue::new(4);
+
+        q.push_back(1);
+        q.push_back(2);
+        q.push_back(3);
+
+        assert_eq!(q.pop_back(), Some(3));
+        assert_eq!(q.pop_back(), Some(2));
+        assert_eq!(q.pop_back(), Some(1));
+        assert_eq!(q.pop_back(), None);
+    }
+
+    #[test]
+    fn push_front_and_pop_front() {
+        let mut q = Queue::new(4);
+
+        q.push_front(1);
+        q.push_front(2);
+        q.push_front(3);
+
+        assert_eq!(q.pop_front(), Some(3));
+        assert_eq!(q.pop_front(), Some(2));
+        assert_eq!(q.pop_front(), Some(1));
+        assert_eq!(q.pop_front(), None);
+    }
+
+    #[test]
+    fn queue_reports_full() {
+        let mut q = Queue::new(4);
+
+        q.push_back(1);
+        q.push_back(2);
+        q.push_back(3);
+        q.push_back(4);
+
+        assert!(q.is_full());
+        assert_eq!(q.len(), 4);
+    }
+
+    #[test]
+    #[should_panic]
+    fn pushing_full_queue_panics() {
+        let mut q = Queue::new(4);
+
+        for i in 0..4 {
+            q.push_back(i);
+        }
+
+        q.push_back(5);
+    }
+
+    #[test]
+    fn queue_can_be_reused_after_emptying() {
+        let mut q = Queue::new(4);
+
+        q.push_back(1);
+        q.push_back(2);
+
+        assert_eq!(q.pop_front(), Some(1));
+        assert_eq!(q.pop_front(), Some(2));
+        assert!(q.is_empty());
+
+        q.push_back(3);
+        q.push_back(4);
+
+        assert_eq!(q.pop_front(), Some(3));
+        assert_eq!(q.pop_front(), Some(4));
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn mixed_front_and_back_operations() {
+        let mut q = Queue::new(8);
+
+        q.push_back(1);
+        q.push_back(2);
+        q.push_front(0);
+        q.push_back(3);
+        q.push_front(-1);
+
+        assert_eq!(q.len(), 5);
+
+        assert_eq!(q.pop_front(), Some(-1));
+        assert_eq!(q.pop_back(), Some(3));
+        assert_eq!(q.pop_front(), Some(0));
+        assert_eq!(q.pop_back(), Some(2));
+        assert_eq!(q.pop_front(), Some(1));
+
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn capacity_is_rounded_to_power_of_two() {
+        let q = Queue::<i32>::new(10);
+
+        assert_eq!(q.data.capacity(), 16);
+    }
+
+    #[test]
+    fn non_copy_values_are_dropped_correctly() {
+        use std::rc::Rc;
+
+        let a = Rc::new(());
+        let b = Rc::new(());
+
+        let mut q = Queue::new(4);
+
+        q.push_back(Rc::clone(&a));
+        q.push_back(Rc::clone(&b));
+
+        assert_eq!(Rc::strong_count(&a), 2);
+        assert_eq!(Rc::strong_count(&b), 2);
+
+        drop(q);
+
+        assert_eq!(Rc::strong_count(&a), 1);
+        assert_eq!(Rc::strong_count(&b), 1);
     }
 }
