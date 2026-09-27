@@ -8,13 +8,16 @@
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
 use schloss::channel::Channel;
-use std::{fmt::Display, net::TcpListener, path::PathBuf, thread};
-use wserver::handler::Job;
+use std::{fmt::Display, net::TcpListener, path::PathBuf};
+use wserver::{
+    handler::{Job, worker},
+    http::parse_stream,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    #[arg(short = 'n', default_value = ".")]
+    #[arg(short = 'd', default_value = ".")]
     basedir: PathBuf,
     #[arg(short)]
     port: u32,
@@ -45,20 +48,39 @@ impl Display for Policy {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-    let w_count = worker_count(&args);
+    let w_count = worker_count(args.threads);
     let queue = Channel::<Job>::new(args.buffer);
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", args.port))?;
+    let addr = format!("127.0.0.1:{}", args.port);
+    let listener = TcpListener::bind(&addr)?;
+
+    for _ in 0..w_count {
+        let q = queue.clone();
+        std::thread::spawn(|| worker(q));
+    }
+
+    eprintln!("listening on {addr}");
+
+    while let Ok((stream, _)) = listener.accept() {
+        let Ok(path) = parse_stream(&stream) else {
+            eprintln!("error when parsing http");
+            continue;
+        };
+        eprintln!("parsed http: {}", path.display());
+
+        queue.push_back(Job { stream, file: path });
+    }
 
     Ok(())
 }
 
-fn worker_count(args: &Cli) -> usize {
+// specifies the amoount of workers, does not exceed the system's available cores
+fn worker_count(count: usize) -> usize {
     let n = unsafe { libc::sysconf(libc::_SC_NPROCESSORS_ONLN) };
     if n < 0 {
         let err = std::io::Error::last_os_error();
         panic!("failed to get thread count from sysconf {err}")
     }
-    usize::min(n as usize, args.threads)
+    usize::min(n as usize, count)
 }
 
 #[cfg(test)]

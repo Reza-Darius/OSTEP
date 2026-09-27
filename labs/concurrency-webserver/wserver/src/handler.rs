@@ -4,8 +4,14 @@ use anyhow::Result;
 use schloss::channel::Channel;
 
 pub struct Job {
-    stream: TcpStream,
-    file: PathBuf,
+    pub stream: TcpStream,
+    pub file: PathBuf,
+}
+
+impl Job {
+    pub fn new(stream: TcpStream, path: PathBuf) -> Self {
+        Job { stream, file: path }
+    }
 }
 
 pub fn worker(queue: Channel<Job>) {
@@ -16,5 +22,6 @@ pub fn worker(queue: Channel<Job>) {
 }
 
 pub fn handle_job(job: Job) -> Result<()> {
-    todo!()
+    println!("handling job {}", job.file.display());
+    Ok(())
 }

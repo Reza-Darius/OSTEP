@@ -2,22 +2,18 @@
 
 use anyhow::{Result, anyhow};
 use std::{
-    io::{BufRead, BufReader},
-    net::TcpStream,
+    io::{BufRead, BufReader, Read},
     path::PathBuf,
 };
-
-pub struct Request {
-    pub path: PathBuf,
-}
 
 const SP: u8 = 0x20;
 const CR: u8 = 0x0D;
 const LF: u8 = 0x0A;
+const CRLF: [char; 2] = ['\r', '\n'];
 
 const HTTP_VERSION: &str = "HTTP/1.0";
 
-pub fn parse_stream(stream: TcpStream) -> Result<Request> {
+pub fn parse_stream(stream: impl Read) -> Result<PathBuf> {
     let mut reader = BufReader::new(stream);
     let mut buf = String::new();
 
@@ -25,104 +21,67 @@ pub fn parse_stream(stream: TcpStream) -> Result<Request> {
         return Err(anyhow!("mangled request"));
     }
 
-    let req_line = parse_request_line(buf.as_bytes())?;
+    let path = parse_request_line(&buf)?;
+
+    // TODO: path security parsing
 
     let mut saw_delimiter = false;
 
+    buf.clear();
     while reader.read_line(&mut buf)? != 0 {
+        // TODO: header parsing
+        if buf == "\r\n" {
+            saw_delimiter = true;
+            break;
+        }
         buf.clear();
-        let line = check_cr(buf.as_bytes())?;
-        if line.is_empty() {
-            saw_delimiter = true;
-            break;
-        }
     }
 
     if !saw_delimiter {
         return Err(anyhow!("missing body delimiter"));
     }
 
-    Ok(Request { path: req_line })
+    Ok(path)
 }
 
-fn parse_http(buf: impl AsRef<[u8]>) -> Result<Request> {
-    let buf = buf.as_ref();
-
-    // split at new line
-    let mut line_iter = buf.split(|&e| e == LF);
-
-    let req_line = line_iter
-        .next()
-        .ok_or_else(|| anyhow!("couldnt parse request line"))?;
-
-    let path = parse_request_line(req_line)?;
-    let mut saw_delimiter = false;
-
-    for line in line_iter.map(check_cr) {
-        let line = line?;
-        if line.is_empty() {
-            saw_delimiter = true;
-            break;
-        }
+fn parse_request_line(line: &str) -> Result<PathBuf> {
+    if !line.ends_with(CRLF) {
+        return Err(anyhow!("couldnt parse request line {line}"));
     }
 
-    if !saw_delimiter {
-        return Err(anyhow!("missing body delimiter"));
-    }
-
-    Ok(Request { path })
-}
-
-// trim off CR
-fn check_cr(line: &[u8]) -> Result<&[u8]> {
-    if line.last().copied().ok_or_else(|| anyhow!("empty line"))? != CR {
-        return Err(anyhow!("couldnt parse request line"));
-    }
-    let line = &line[..line.len() - 1];
-    Ok(line)
-}
-
-fn parse_request_line(line: &[u8]) -> Result<PathBuf> {
-    let line = check_cr(line)?;
     // request-line   = method SP request-target SP HTTP-version
-    let mut req_line_iter = line.split(|&e| e == SP);
+    let mut req_line_iter = line.split_whitespace();
 
     let Some(method) = req_line_iter.next() else {
         return Err(anyhow!("couldnt parse request line"));
     };
 
-    if method != "GET".as_bytes() {
-        return if let Ok(m) = std::str::from_utf8(method) {
-            Err(anyhow!("unsupported HTTP method {m}"))
-        } else {
-            Err(anyhow!("unsupported HTTP method"))
-        };
+    if method != "GET" {
+        return Err(anyhow!("unsupported HTTP method {method}"));
     }
 
     let path = req_line_iter
         .next()
         .ok_or_else(|| anyhow!("failed to retrieve request target"))
-        .and_then(|path| String::from_utf8(path.to_vec()).map_err(Into::into))
         .map(PathBuf::from)?;
 
     let Some(version) = req_line_iter.next() else {
         return Err(anyhow!("couldnt retrieve version from req line"));
     };
 
-    if version != HTTP_VERSION.as_bytes() {
-        return if let Ok(v) = std::str::from_utf8(version) {
-            Err(anyhow!("unsupported HTTP version {v}"))
-        } else {
-            Err(anyhow!("unsupported HTTP version"))
-        };
+    if version != HTTP_VERSION {
+        return Err(anyhow!("unsupported HTTP version {version}"));
     }
     Ok(path)
 }
 
 fn parse_header(line: &str) -> Result<()> {
-    check_cr(line.as_bytes())?;
+    if !line.ends_with(CRLF) {
+        return Err(anyhow!("invalid header {line}"));
+    }
+
     if !line.contains(':') {
-        return Err(anyhow!("invalid header field"))
+        return Err(anyhow!("invalid header field"));
     }
     Ok(())
 }
@@ -139,17 +98,17 @@ mod test {
         Accept: */*\r\n\
         Connection: close\r\n\r\n";
 
-        let r = parse_http(request.as_bytes()).unwrap();
-        assert_eq!("/", r.path.as_path());
+        let r = parse_stream(request.as_bytes()).unwrap();
+        assert_eq!("/", r.as_path());
 
         let request = "GET / HTTP/1.0\r\n\
         Host: example.com\r\n\
         User-Agent: test-client/1.0\r\n\
         Accept: */*\r\n\
         Connection: close\r\n";
-        assert!(parse_http(request.as_bytes()).is_err());
+        assert!(parse_stream(request.as_bytes()).is_err());
 
         let request = "GET / HTTP/1.0\r\n";
-        assert!(parse_http(request.as_bytes()).is_err());
+        assert!(parse_stream(request.as_bytes()).is_err());
     }
 }
