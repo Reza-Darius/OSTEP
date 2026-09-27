@@ -2,7 +2,7 @@
 
 use anyhow::{Result, anyhow};
 use std::{
-    io::{BufRead, BufReader, Read},
+    io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
 };
 
@@ -12,6 +12,21 @@ const LF: u8 = 0x0A;
 const CRLF: [char; 2] = ['\r', '\n'];
 
 const HTTP_VERSION: &str = "HTTP/1.0";
+
+pub fn write_response(data: &[u8], mut stream: impl Write) -> Result<()> {
+    write!(
+        stream,
+        "
+        {HTTP_VERSION} 200 OK\r\n\
+        Content-Type: application/octet-stream\r\n\
+        Content-Length: {}\r\n\
+        Connection: close\r\n\
+        \r\n\
+    ",
+        data.len()
+    )?;
+    stream.write_all(data).map_err(Into::into)
+}
 
 pub fn parse_stream(stream: impl Read) -> Result<PathBuf> {
     let mut reader = BufReader::new(stream);

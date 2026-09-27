@@ -32,16 +32,16 @@ struct Cli {
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Default)]
 #[value(rename_all = "upper")]
 enum Policy {
-    Sff,
     #[default]
     Fifo,
+    Sff,
 }
 
 impl Display for Policy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Policy::Sff => write!(f, "SFF"),
             Policy::Fifo => write!(f, "FIFO"),
+            Policy::Sff => write!(f, "SFF"),
         }
     }
 }
@@ -60,6 +60,15 @@ fn main() -> Result<()> {
 
     eprintln!("listening on {addr}");
 
+    match args.schedule {
+        Policy::Fifo => fifo_server(listener, queue)?,
+        Policy::Sff => todo!(),
+    }
+
+    Ok(())
+}
+
+fn fifo_server(listener: TcpListener, queue: Channel<Job>) -> Result<()> {
     while let Ok((stream, _)) = listener.accept() {
         let Ok(path) = parse_stream(&stream) else {
             eprintln!("error when parsing http");
@@ -69,7 +78,6 @@ fn main() -> Result<()> {
 
         queue.push_back(Job { stream, file: path });
     }
-
     Ok(())
 }
 
