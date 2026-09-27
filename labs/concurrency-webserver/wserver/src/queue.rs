@@ -1,38 +1,27 @@
 #![allow(dead_code)]
 
-use std::{
-    mem::MaybeUninit,
-    sync::{Condvar, Mutex},
-};
-
-pub struct WorkerPool<T> {
-    queue: Mutex<T>,
-    cv: Condvar,
-}
+use std::{mem::MaybeUninit};
 
 struct Queue<T> {
-    data: Vec<MaybeUninit<T>>,
+    data: Box<[MaybeUninit<T>]>,
     head: usize,
     tail: usize,
     len: usize,
 }
 
 impl<T> Queue<T> {
+    // constructs a new Queue, panics on cap == 0
     pub fn new(cap: usize) -> Self {
         assert!(cap > 0);
         let cap = round_pow2(cap);
         debug_assert!(cap.is_power_of_two(), "cap needs to be power of two");
 
-        let mut q = Queue {
-            data: Vec::with_capacity(cap),
+        Queue {
+            data: Box::new_uninit_slice(cap),
             head: 0,
             tail: 0,
             len: 0,
-        };
-        unsafe {
-            q.data.set_len(cap);
-        };
-        q
+        }
     }
 
     pub fn push_front(&mut self, val: T) {
@@ -91,7 +80,7 @@ impl<T> Queue<T> {
     }
 
     pub fn is_full(&self) -> bool {
-        self.len == self.data.capacity()
+        self.len == self.data.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -113,7 +102,7 @@ impl<T> Queue<T> {
     }
 
     fn idx(&self, i: usize) -> usize {
-        i & (self.data.capacity() - 1)
+        i & (self.data.len() - 1)
     }
 }
 
@@ -301,7 +290,7 @@ mod test {
     fn capacity_is_rounded_to_power_of_two() {
         let q = Queue::<i32>::new(10);
 
-        assert_eq!(q.data.capacity(), 16);
+        assert_eq!(q.data.len(), 16);
     }
 
     #[test]
