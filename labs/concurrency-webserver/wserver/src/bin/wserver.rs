@@ -7,11 +7,11 @@
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
-use schloss::channel::Channel;
 use std::{fmt::Display, net::TcpListener, path::PathBuf};
 use wserver::{
+    chan::Channel,
     handler::{Job, worker},
-    http::parse_stream,
+    http::read_stream,
 };
 
 #[derive(Parser)]
@@ -70,13 +70,13 @@ fn main() -> Result<()> {
 
 fn fifo_server(listener: TcpListener, queue: Channel<Job>) -> Result<()> {
     while let Ok((stream, _)) = listener.accept() {
-        let Ok(path) = parse_stream(&stream) else {
+        let Ok(path) = read_stream(&stream) else {
             eprintln!("error when parsing http");
             continue;
         };
         eprintln!("parsed http: {}", path.display());
 
-        queue.push_back(Job { stream, file: path });
+        queue.push_back(Job { client: stream, file: path });
     }
     Ok(())
 }

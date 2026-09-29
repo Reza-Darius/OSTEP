@@ -1,16 +1,16 @@
 use std::{net::TcpStream, path::PathBuf};
 
 use anyhow::Result;
-use schloss::channel::Channel;
+use crate::chan::Channel;
 
 pub struct Job {
-    pub stream: TcpStream,
+    pub client: TcpStream,
     pub file: PathBuf,
 }
 
 impl Job {
-    pub fn new(stream: TcpStream, path: PathBuf) -> Self {
-        Job { stream, file: path }
+    pub fn new(client: TcpStream, path: PathBuf) -> Self {
+        Job { client, file: path }
     }
 }
 

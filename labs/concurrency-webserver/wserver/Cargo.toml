@@ -3,14 +3,13 @@ name = "wserver"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "wserver"
-path = "src/bin/wserver.rs"
+[lib]
+path = "src/lib/"
 
 [dependencies]
 anyhow = "1.0.104"
 clap = { version = "4.6.7", features = ["derive"] }
 libc = "0.2.189"
-schloss = { path = "/home/darius/Projects/Rust/schloss/" }
+parking_lot = "0.12.5"
 
 

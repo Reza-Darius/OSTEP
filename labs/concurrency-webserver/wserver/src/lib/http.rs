@@ -28,7 +28,7 @@ pub fn write_response(data: &[u8], mut stream: impl Write) -> Result<()> {
     stream.write_all(data).map_err(Into::into)
 }
 
-pub fn parse_stream(stream: impl Read) -> Result<PathBuf> {
+pub fn read_stream(stream: impl Read) -> Result<PathBuf> {
     let mut reader = BufReader::new(stream);
     let mut buf = String::new();
 
@@ -113,7 +113,7 @@ mod test {
         Accept: */*\r\n\
         Connection: close\r\n\r\n";
 
-        let r = parse_stream(request.as_bytes()).unwrap();
+        let r = read_stream(request.as_bytes()).unwrap();
         assert_eq!("/", r.as_path());
 
         let request = "GET / HTTP/1.0\r\n\
@@ -121,9 +121,9 @@ mod test {
         User-Agent: test-client/1.0\r\n\
         Accept: */*\r\n\
         Connection: close\r\n";
-        assert!(parse_stream(request.as_bytes()).is_err());
+        assert!(read_stream(request.as_bytes()).is_err());
 
         let request = "GET / HTTP/1.0\r\n";
-        assert!(parse_stream(request.as_bytes()).is_err());
+        assert!(read_stream(request.as_bytes()).is_err());
     }
 }
