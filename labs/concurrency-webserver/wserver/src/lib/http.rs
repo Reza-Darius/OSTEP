@@ -8,19 +8,32 @@ const CRLF: [char; 2] = ['\r', '\n'];
 
 const HTTP_VERSION: &str = "HTTP/1.0";
 
-pub fn write_response(data: &[u8], mut stream: impl Write) -> Result<()> {
+pub fn write_response(mut stream: impl Write, resp_size: usize) -> Result<()> {
     write!(
         stream,
-        "
+        "\
         {HTTP_VERSION} 200 OK\r\n\
         Content-Type: application/octet-stream\r\n\
         Content-Length: {}\r\n\
         Connection: close\r\n\
         \r\n\
     ",
-        data.len()
-    )?;
-    stream.write_all(data).map_err(Into::into)
+        resp_size
+    )
+    .map_err(Into::into)
+}
+
+pub fn write_error(mut stream: impl Write) -> Result<()> {
+    write!(
+        stream,
+        "\
+        {HTTP_VERSION} 500 Internal Server Error\r\n\
+        Content-Length: 0\r\n\
+        Connection: close\r\n\
+        \r\n\
+    "
+    )
+    .map_err(Into::into)
 }
 
 pub fn read_stream(stream: impl Read) -> Result<PathBuf> {
@@ -36,7 +49,6 @@ pub fn read_stream(stream: impl Read) -> Result<PathBuf> {
     // TODO: path security parsing
 
     let mut saw_delimiter = false;
-
     buf.clear();
     while reader.read_line(&mut buf)? != 0 {
         // TODO: header parsing
@@ -46,7 +58,6 @@ pub fn read_stream(stream: impl Read) -> Result<PathBuf> {
         }
         buf.clear();
     }
-
     if !saw_delimiter {
         return Err(anyhow!("missing body delimiter"));
     }
@@ -71,6 +82,7 @@ fn parse_request_line(line: &str) -> Result<PathBuf> {
 
     let path = req_line_iter
         .next()
+        .and_then(|s| s.strip_prefix('/'))
         .ok_or_else(|| anyhow!("failed to retrieve request target"))
         .map(PathBuf::from)?;
 
@@ -79,8 +91,9 @@ fn parse_request_line(line: &str) -> Result<PathBuf> {
     };
 
     if version != HTTP_VERSION {
-        return Err(anyhow!("unsupported HTTP version {version}"));
+        return Err(anyhow!("unsupported HTTP version: {version}"));
     }
+
     Ok(path)
 }
 

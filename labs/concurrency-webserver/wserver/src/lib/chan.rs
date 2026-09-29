@@ -17,7 +17,9 @@ pub struct Channel {
 
 impl Clone for Channel {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
 
@@ -37,6 +39,26 @@ impl Channel {
                 cons_cv: Condvar::new(),
             }
             .into(),
+        }
+    }
+
+    pub fn enqueue_shortest_job(&self, job: Job) {
+        let mut guard = self.inner.q.lock();
+        loop {
+            if guard.capacity() > guard.len() {
+                if let Some(front) = guard.front()
+                    && job.file_size.unwrap() < front.file_size.unwrap()
+                {
+                    guard.push_front(job);
+                } else {
+                    guard.push_back(job);
+                }
+                self.inner.cons_cv.notify_one();
+                return;
+            } else {
+                // wait on full queue
+                self.inner.prod_cv.wait(&mut guard);
+            }
         }
     }
 

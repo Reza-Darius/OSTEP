@@ -2,13 +2,17 @@ use std::{
     fmt::Display,
     net::TcpStream,
     os::{fd::AsRawFd, unix::fs::MetadataExt},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
-use crate::{chan::Channel, http::read_stream};
+use crate::{
+    chan::Channel,
+    http::{read_stream, write_response},
+};
 use anyhow::Result;
 use clap::ValueEnum;
 
+#[derive(Debug)]
 pub struct Job {
     pub client: TcpStream,
     pub path: Option<PathBuf>,
@@ -32,21 +36,23 @@ impl Display for Policy {
     }
 }
 
-pub fn worker(queue: Channel) {
+pub fn worker(basedir: &Path, queue: Channel) {
     loop {
         let job = queue.pop_front();
-        if let Err(e) = handle_job(job) {
+        if let Err(e) = handle_job(basedir, job) {
             eprintln!("couldnt handle job: {e}");
         };
     }
 }
 
-pub fn handle_job(job: Job) -> Result<()> {
+fn handle_job(basedir: &Path, mut job: Job) -> Result<()> {
     let path = if let Some(path) = job.path {
         path
     } else {
         read_stream(&job.client)?
     };
+
+    let path = basedir.join(path);
 
     let filesize = if let Some(size) = job.file_size {
         size as usize
@@ -54,9 +60,12 @@ pub fn handle_job(job: Job) -> Result<()> {
         std::fs::metadata(&path).map(|meta| meta.size() as usize)?
     };
 
-    let file = std::fs::File::open(path)?;
+    let file = std::fs::File::open(&path)?;
     let mut n_sent = 0;
 
+    eprintln!("handling job: path: {}, size: {}", path.display(), filesize);
+
+    write_response(&mut job.client, filesize)?;
     unsafe {
         while n_sent < filesize {
             let rc = libc::sendfile(
@@ -72,4 +81,18 @@ pub fn handle_job(job: Job) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn path_test() {
+        let p = Path::new(".");
+        assert_eq!(p.join(Path::new("/foo.txt")), Path::new("/foo.txt"));
+        // let p = std::path::absolute(Path::new(".")).unwrap();
+        let p2 = p.join("foo");
+        eprintln!("{}", p2.display());
+    }
 }
