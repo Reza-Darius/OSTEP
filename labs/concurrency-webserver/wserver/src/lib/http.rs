@@ -1,14 +1,9 @@
-#![allow(dead_code)]
-
 use anyhow::{Result, anyhow};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
 };
 
-const SP: u8 = 0x20;
-const CR: u8 = 0x0D;
-const LF: u8 = 0x0A;
 const CRLF: [char; 2] = ['\r', '\n'];
 
 const HTTP_VERSION: &str = "HTTP/1.0";
@@ -66,7 +61,6 @@ fn parse_request_line(line: &str) -> Result<PathBuf> {
 
     // request-line   = method SP request-target SP HTTP-version
     let mut req_line_iter = line.split_whitespace();
-
     let Some(method) = req_line_iter.next() else {
         return Err(anyhow!("couldnt parse request line"));
     };
@@ -88,17 +82,6 @@ fn parse_request_line(line: &str) -> Result<PathBuf> {
         return Err(anyhow!("unsupported HTTP version {version}"));
     }
     Ok(path)
-}
-
-fn parse_header(line: &str) -> Result<()> {
-    if !line.ends_with(CRLF) {
-        return Err(anyhow!("invalid header {line}"));
-    }
-
-    if !line.contains(':') {
-        return Err(anyhow!("invalid header field"));
-    }
-    Ok(())
 }
 
 #[cfg(test)]

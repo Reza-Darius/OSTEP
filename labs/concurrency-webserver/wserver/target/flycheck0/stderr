@@ -1,9 +1,0 @@
-    Blocking waiting for file lock on package cache
-    Blocking waiting for file lock on package cache
-error: path `/home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/src/lib` for lib `wserver` is a directory, but a source file was expected.
- --> /home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/Cargo.toml
-  = help: an entry point exists at `/home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/src/lib/lib.rs`
-error: path `/home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/src/lib` for lib `wserver` is a directory, but a source file was expected.
- --> /home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/Cargo.toml
-  = help: an entry point exists at `/home/darius/Projects/OSTEP/labs/concurrency-webserver/wserver/src/lib/lib.rs`
-error: could not compile due to 2 previous target resolution errors

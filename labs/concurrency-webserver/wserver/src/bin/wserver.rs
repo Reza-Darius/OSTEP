@@ -6,11 +6,11 @@
 */
 
 use anyhow::Result;
-use clap::{Parser, ValueEnum};
-use std::{fmt::Display, net::TcpListener, path::PathBuf};
+use clap::Parser;
+use std::{net::TcpListener, os::unix::fs::MetadataExt, path::PathBuf};
 use wserver::{
     chan::Channel,
-    handler::{Job, worker},
+    handler::{Job, Policy, worker},
     http::read_stream,
 };
 
@@ -29,36 +29,22 @@ struct Cli {
     schedule: Policy,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Default)]
-#[value(rename_all = "upper")]
-enum Policy {
-    #[default]
-    Fifo,
-    Sff,
-}
-
-impl Display for Policy {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Policy::Fifo => write!(f, "FIFO"),
-            Policy::Sff => write!(f, "SFF"),
-        }
-    }
-}
-
 fn main() -> Result<()> {
     let args = Cli::parse();
     let w_count = worker_count(args.threads);
-    let queue = Channel::<Job>::new(args.buffer);
+    let queue = Channel::new(args.buffer);
     let addr = format!("127.0.0.1:{}", args.port);
     let listener = TcpListener::bind(&addr)?;
 
     for _ in 0..w_count {
         let q = queue.clone();
-        std::thread::spawn(|| worker(q));
+        std::thread::spawn(move || worker(q));
     }
 
-    eprintln!("listening on {addr}");
+    eprintln!(
+        "listening on {addr}, with {w_count} threads, buffer {}, schedule {}",
+        args.buffer, args.schedule
+    );
 
     match args.schedule {
         Policy::Fifo => fifo_server(listener, queue)?,
@@ -68,7 +54,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn fifo_server(listener: TcpListener, queue: Channel<Job>) -> Result<()> {
+fn fifo_server(listener: TcpListener, queue: Channel) -> Result<()> {
+    while let Ok((stream, _)) = listener.accept() {
+        queue.push_back(Job {
+            client: stream,
+            path: None,
+            file_size: None,
+        });
+    }
+    Ok(())
+}
+
+fn sff_server(listener: TcpListener, queue: Channel) -> Result<()> {
     while let Ok((stream, _)) = listener.accept() {
         let Ok(path) = read_stream(&stream) else {
             eprintln!("error when parsing http");
@@ -76,7 +73,18 @@ fn fifo_server(listener: TcpListener, queue: Channel<Job>) -> Result<()> {
         };
         eprintln!("parsed http: {}", path.display());
 
-        queue.push_back(Job { client: stream, file: path });
+        let Ok(size) = std::fs::metadata(&path).map(|meta| meta.size()) else {
+            eprintln!("error when getting metadata");
+            continue;
+        };
+
+        let job = Job {
+            client: stream,
+            path: Some(path),
+            file_size: Some(size),
+        };
+
+        // TODO: enqueue algorithm
     }
     Ok(())
 }

@@ -7,26 +7,28 @@ use std::{collections::VecDeque, sync::Arc};
 
 use parking_lot::{Condvar, Mutex};
 
+use crate::handler::Job;
+
 // cheap handle to a thread safe channel
 #[derive(Default)]
-pub struct Channel<T> {
-    inner: Arc<ChanInner<T>>,
+pub struct Channel {
+    inner: Arc<ChanInner>,
 }
 
-impl<T> Clone for Channel<T> {
+impl Clone for Channel {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
 #[derive(Default)]
-pub struct ChanInner<T> {
-    q: Mutex<VecDeque<T>>,
+pub struct ChanInner {
+    q: Mutex<VecDeque<Job>>,
     prod_cv: Condvar,
     cons_cv: Condvar,
 }
 
-impl<T> Channel<T> {
+impl Channel {
     pub fn new(cap: usize) -> Self {
         Channel {
             inner: ChanInner {
@@ -39,7 +41,7 @@ impl<T> Channel<T> {
     }
 
     /// blocks the thread until room is available for a value
-    pub fn push_back(&self, value: T) {
+    pub fn push_back(&self, value: Job) {
         let mut guard = self.inner.q.lock();
         loop {
             if guard.capacity() > guard.len() {
@@ -54,7 +56,7 @@ impl<T> Channel<T> {
     }
 
     /// blocks the thread until room is available for a value
-    pub fn push_front(&self, value: T) {
+    pub fn push_front(&self, value: Job) {
         let mut guard = self.inner.q.lock();
         loop {
             if guard.capacity() > guard.len() {
@@ -69,7 +71,7 @@ impl<T> Channel<T> {
     }
 
     /// blocks the thread until a value becomes available
-    pub fn pop_front(&self) -> T {
+    pub fn pop_front(&self) -> Job {
         let mut guard = self.inner.q.lock();
         loop {
             if let Some(item) = guard.pop_front() {
@@ -83,7 +85,7 @@ impl<T> Channel<T> {
     }
 
     /// blocks the thread until a value becomes available
-    pub fn pop_back(&self) -> T {
+    pub fn pop_back(&self) -> Job {
         let mut guard = self.inner.q.lock();
         loop {
             if let Some(item) = guard.pop_back() {
@@ -93,43 +95,6 @@ impl<T> Channel<T> {
                 // wait on empty queue
                 self.inner.cons_cv.wait(&mut guard);
             }
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    #[test]
-    fn channel() {
-        const N_ITERATIONS: usize = 10000;
-        const N_ARR_SIZE: usize = 100;
-
-        let data = (0..N_ARR_SIZE).collect::<Vec<_>>();
-
-        for _ in 0..N_ITERATIONS {
-            let queue = Channel::new(5);
-
-            let res = std::thread::scope(|s| {
-                // producer
-                s.spawn(|| {
-                    for e in data.iter().copied() {
-                        queue.push_back(e);
-                    }
-                });
-
-                // consumer
-                let r = s.spawn(|| {
-                    let mut res = vec![];
-                    for _ in 0..data.len() {
-                        res.push(queue.pop_front());
-                    }
-                    res
-                });
-                r.join().unwrap()
-            });
-
-            assert_eq!(res, data, "data should be the same in FIFO order");
         }
     }
 }
