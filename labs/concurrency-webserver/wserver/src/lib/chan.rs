@@ -7,15 +7,15 @@ use std::{collections::VecDeque, sync::Arc};
 
 use parking_lot::{Condvar, Mutex};
 
-use crate::handler::Job;
+use crate::handler::SffJob;
 
 // cheap handle to a thread safe channel
 #[derive(Default)]
-pub struct Channel {
-    inner: Arc<ChanInner>,
+pub struct Channel<T> {
+    inner: Arc<ChanInner<T>>,
 }
 
-impl Clone for Channel {
+impl<T> Clone for Channel<T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -24,13 +24,13 @@ impl Clone for Channel {
 }
 
 #[derive(Default)]
-pub struct ChanInner {
-    q: Mutex<VecDeque<Job>>,
+pub struct ChanInner<T> {
+    q: Mutex<VecDeque<T>>,
     prod_cv: Condvar,
     cons_cv: Condvar,
 }
 
-impl Channel {
+impl<T> Channel<T> {
     pub fn new(cap: usize) -> Self {
         Channel {
             inner: ChanInner {
@@ -42,28 +42,8 @@ impl Channel {
         }
     }
 
-    pub fn enqueue_shortest_job(&self, job: Job) {
-        let mut guard = self.inner.q.lock();
-        loop {
-            if guard.capacity() > guard.len() {
-                if let Some(front) = guard.front()
-                    && job.file_size.unwrap() < front.file_size.unwrap()
-                {
-                    guard.push_front(job);
-                } else {
-                    guard.push_back(job);
-                }
-                self.inner.cons_cv.notify_one();
-                return;
-            } else {
-                // wait on full queue
-                self.inner.prod_cv.wait(&mut guard);
-            }
-        }
-    }
-
     /// blocks the thread until room is available for a value
-    pub fn push_back(&self, value: Job) {
+    pub fn push_back(&self, value: T) {
         let mut guard = self.inner.q.lock();
         loop {
             if guard.capacity() > guard.len() {
@@ -78,7 +58,7 @@ impl Channel {
     }
 
     /// blocks the thread until room is available for a value
-    pub fn push_front(&self, value: Job) {
+    pub fn push_front(&self, value: T) {
         let mut guard = self.inner.q.lock();
         loop {
             if guard.capacity() > guard.len() {
@@ -93,7 +73,7 @@ impl Channel {
     }
 
     /// blocks the thread until a value becomes available
-    pub fn pop_front(&self) -> Job {
+    pub fn pop_front(&self) -> T {
         let mut guard = self.inner.q.lock();
         loop {
             if let Some(item) = guard.pop_front() {
@@ -105,17 +85,25 @@ impl Channel {
             }
         }
     }
+}
 
-    /// blocks the thread until a value becomes available
-    pub fn pop_back(&self) -> Job {
+impl Channel<SffJob> {
+    pub fn enqueue_shortest_job(&self, job: SffJob) {
         let mut guard = self.inner.q.lock();
         loop {
-            if let Some(item) = guard.pop_back() {
-                self.inner.prod_cv.notify_one();
-                return item;
+            if guard.capacity() > guard.len() {
+                if let Some(front) = guard.front()
+                    && job.file_size < front.file_size
+                {
+                    guard.push_front(job);
+                } else {
+                    guard.push_back(job);
+                }
+                self.inner.cons_cv.notify_one();
+                return;
             } else {
-                // wait on empty queue
-                self.inner.cons_cv.wait(&mut guard);
+                // wait on full queue
+                self.inner.prod_cv.wait(&mut guard);
             }
         }
     }

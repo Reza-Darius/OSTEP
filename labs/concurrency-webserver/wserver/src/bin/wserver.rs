@@ -1,10 +1,3 @@
-/*
-* HTTP file server over a threadpool
-* 1. parse http
-* 2. setup thread pool
-* 3. setup server
-*/
-
 use anyhow::Result;
 use clap::Parser;
 use std::path::PathBuf;

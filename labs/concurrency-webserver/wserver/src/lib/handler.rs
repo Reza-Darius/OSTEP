@@ -1,5 +1,6 @@
 use std::{
     fmt::Display,
+    fs::File,
     net::TcpStream,
     os::{fd::AsRawFd, unix::fs::MetadataExt},
     path::{Path, PathBuf},
@@ -7,16 +8,21 @@ use std::{
 
 use crate::{
     chan::Channel,
-    http::{read_stream, write_response},
+    http::{read_stream, write_http_resp},
 };
 use anyhow::Result;
 use clap::ValueEnum;
 
 #[derive(Debug)]
-pub struct Job {
+pub struct FifoJob {
     pub client: TcpStream,
-    pub path: Option<PathBuf>,
-    pub file_size: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct SffJob {
+    pub client: TcpStream,
+    pub path: PathBuf,
+    pub file_size: u64,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Default)]
@@ -35,44 +41,66 @@ impl Display for Policy {
         }
     }
 }
-
-pub fn worker(basedir: &Path, queue: Channel) {
+pub fn sff_worker(basedir: &Path, queue: Channel<SffJob>) {
     loop {
         let job = queue.pop_front();
-        if let Err(e) = handle_job(basedir, job) {
+        if let Err(e) = handle_sff_job(basedir, job) {
             eprintln!("couldnt handle job: {e}");
         };
     }
 }
 
-fn handle_job(basedir: &Path, mut job: Job) -> Result<()> {
-    let path = if let Some(path) = job.path {
-        path
-    } else {
-        read_stream(&job.client)?
-    };
-
-    let path = basedir.join(path);
-
-    let filesize = if let Some(size) = job.file_size {
-        size as usize
-    } else {
-        std::fs::metadata(&path).map(|meta| meta.size() as usize)?
-    };
-
+fn handle_sff_job(basedir: &Path, job: SffJob) -> Result<()> {
+    let path = basedir.join(job.path);
     let file = std::fs::File::open(&path)?;
+
+    eprintln!(
+        "handling sff job: path: {}, size: {}",
+        path.display(),
+        job.file_size
+    );
+
+    write_response(&file, job.file_size as usize, &job.client)?;
+    Ok(())
+}
+
+pub fn fifo_worker(basedir: &Path, queue: Channel<FifoJob>) {
+    loop {
+        let job = queue.pop_front();
+        if let Err(e) = handle_fifo_job(basedir, job) {
+            eprintln!("couldnt handle job: {e}");
+        };
+    }
+}
+
+fn handle_fifo_job(basedir: &Path, job: FifoJob) -> Result<()> {
+    let req_path = read_stream(&job.client)?;
+    let path = basedir.join(req_path);
+
+    let file_size = std::fs::metadata(&path).map(|meta| meta.size() as usize)?;
+    let file = std::fs::File::open(&path)?;
+
+    // eprintln!(
+    //     "handling fifo job: path: {}, size: {}",
+    //     path.display(),
+    //     file_size
+    // );
+
+    write_response(&file, file_size, &job.client)?;
+    Ok(())
+}
+
+fn write_response(file: &File, file_size: usize, client: &TcpStream) -> Result<()> {
     let mut n_sent = 0;
 
-    eprintln!("handling job: path: {}, size: {}", path.display(), filesize);
-
-    write_response(&mut job.client, filesize)?;
+    write_http_resp(client, file_size)?;
     unsafe {
-        while n_sent < filesize {
+        while n_sent < file_size {
             let rc = libc::sendfile(
-                job.client.as_raw_fd(),
+                client.as_raw_fd(),
                 file.as_raw_fd(),
                 std::ptr::null_mut(),
-                filesize - n_sent,
+                file_size - n_sent,
             );
             if rc == -1 {
                 return Err(std::io::Error::last_os_error().into());

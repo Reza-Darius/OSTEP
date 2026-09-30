@@ -8,7 +8,8 @@ const CRLF: [char; 2] = ['\r', '\n'];
 
 const HTTP_VERSION: &str = "HTTP/1.0";
 
-pub fn write_response(mut stream: impl Write, resp_size: usize) -> Result<()> {
+#[inline(always)]
+pub fn write_http_resp(mut stream: impl Write, resp_size: usize) -> Result<()> {
     write!(
         stream,
         "\
@@ -23,7 +24,8 @@ pub fn write_response(mut stream: impl Write, resp_size: usize) -> Result<()> {
     .map_err(Into::into)
 }
 
-pub fn write_error(mut stream: impl Write) -> Result<()> {
+#[inline(always)]
+pub fn write_http_err(mut stream: impl Write) -> Result<()> {
     write!(
         stream,
         "\
