@@ -1,7 +1,7 @@
 server:
-    cargo run --bin wserver -- -p 8000
+    cargo run --bin wserver -- -p 8000 -t 1 -b 10 -s SFF
 client:
-    cargo run --bin client -- -p 8000 -t 2 -m 10000
+    cargo run --bin client -- -p 8000 -t 3 -m 10
 
 curl:
     curl --http1.0 http://127.0.0.1:8000/files/file1.txt -v

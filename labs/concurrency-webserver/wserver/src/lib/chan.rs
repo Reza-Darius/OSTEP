@@ -95,8 +95,10 @@ impl Channel<SffJob> {
                 if let Some(front) = guard.front()
                     && job.file_size < front.file_size
                 {
+                    eprintln!("pushing front");
                     guard.push_front(job);
                 } else {
+                    eprintln!("pushing back");
                     guard.push_back(job);
                 }
                 self.inner.cons_cv.notify_one();

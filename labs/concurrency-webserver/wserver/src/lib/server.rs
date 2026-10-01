@@ -43,12 +43,12 @@ pub fn run(
                 std::thread::spawn(move || sff_worker(basedir, q));
             }
 
+            let mut job_counter = 0;
             while let Ok((stream, _)) = listener.accept() {
                 let Ok(path) = read_stream(&stream) else {
                     eprintln!("error when parsing http");
                     continue;
                 };
-                eprintln!("parsed http: {}", path.display());
 
                 let Ok(size) = std::fs::metadata(&path).map(|meta| meta.size()) else {
                     eprintln!("error when getting metadata");

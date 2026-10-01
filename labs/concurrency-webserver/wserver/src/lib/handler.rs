@@ -1,9 +1,5 @@
 use std::{
-    fmt::Display,
-    fs::File,
-    net::TcpStream,
-    os::{fd::AsRawFd, unix::fs::MetadataExt},
-    path::{Path, PathBuf},
+    fmt::Display, fs::File, net::TcpStream, os::{fd::AsRawFd, unix::fs::MetadataExt}, path::{Path, PathBuf}, thread, time::Duration,
 };
 
 use crate::{
@@ -43,10 +39,13 @@ impl Display for Policy {
 }
 pub fn sff_worker(basedir: &Path, queue: Channel<SffJob>) {
     loop {
+        // thread::sleep(Duration::from_secs(1));
         let job = queue.pop_front();
+        println!("got job");
         if let Err(e) = handle_sff_job(basedir, job) {
             eprintln!("couldnt handle job: {e}");
         };
+        println!("job done");
     }
 }
 
@@ -54,11 +53,11 @@ fn handle_sff_job(basedir: &Path, job: SffJob) -> Result<()> {
     let path = basedir.join(job.path);
     let file = std::fs::File::open(&path)?;
 
-    eprintln!(
-        "handling sff job: path: {}, size: {}",
-        path.display(),
-        job.file_size
-    );
+    // eprintln!(
+    //     "handling sff job: path: {}, size: {}",
+    //     path.display(),
+    //     job.file_size
+    // );
 
     write_response(&file, job.file_size as usize, &job.client)?;
     Ok(())

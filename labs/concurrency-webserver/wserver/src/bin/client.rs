@@ -35,15 +35,6 @@ struct Cli {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-    let f = send_msg("/files/file1.txt", 8000)?;
-    println!("file1 one took: {:?}", f);
-
-    let f = send_msg("/files/file2.txt", 8000)?;
-    println!("file2 one took: {:?}", f);
-
-    let f = send_msg("/files/file3.txt", 8000)?;
-    println!("file3 one took: {:?}", f);
-
     let worker_count = args.n_messages / args.threads as u32;
 
     let res = std::thread::scope(|s| {
@@ -81,7 +72,7 @@ fn aggregate_results(data: Vec<HashMap<&'static str, (Duration, u32)>>) {
 
     for (file, (durr, count)) in res {
         let average = durr / count;
-        println!("average time for {}: {:?}", file, average);
+        println!("average turnaround time for {}: {:?}", file, average);
     }
 }
 
