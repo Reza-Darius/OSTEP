@@ -1,5 +1,5 @@
 server:
-    cargo run --release --bin wserver -- -p 8000 -t 4 -b 100 -s SFF
+    cargo run --release --bin wserver -- -p 8000 -t 2 -b 100 -s SFF
 client:
     cargo run --release --bin client -- -p 8000 -t 20 -m 1000
 files:

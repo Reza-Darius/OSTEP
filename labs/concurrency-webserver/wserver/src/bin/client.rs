@@ -51,40 +51,41 @@ fn main() -> Result<()> {
         res
     });
 
-    aggregate_results(res);
+    aggregate_results(args.threads as u32 * args.n_messages, res);
     Ok(())
 }
 
-fn aggregate_results(data: Vec<HashMap<&'static str, (Duration, u32)>>) {
-    let res: HashMap<&'static str, (Duration, u32)> =
-        data.iter().fold(HashMap::new(), |mut acc, map| {
-            for file in FILES {
-                if let Some(entry) = map.get(file).copied() {
-                    acc.entry(file)
-                        .and_modify(|(durr, count)| {
-                            *durr += entry.0;
-                            *count += entry.1;
-                        })
-                        .or_insert(entry);
-                };
+fn aggregate_results(total_msgs: u32, data: Vec<HashMap<&'static str, (Duration, u32)>>) {
+    let mut total_time = Duration::default();
+
+    let res = data.iter().fold(
+        HashMap::new(),
+        |mut acc: HashMap<_, (Duration, u32)>, map| {
+            for (&file, &(duration, count)) in map {
+                total_time += duration;
+
+                acc.entry(file)
+                    .and_modify(|(d, c)| {
+                        *d += duration;
+                        *c += count;
+                    })
+                    .or_insert((duration, count));
             }
+
             acc
-        });
+        },
+    );
 
     let res = res
         .into_iter()
         .map(|(file, (durr, count))| (file, durr / count))
         .collect::<BTreeMap<_, _>>();
 
-    let n_files = res.len();
-    let mut total_time = Duration::default();
-
     for (file, average) in res {
         println!("average turnaround time for {}: {:?}", file, average);
-        total_time += average;
     }
 
-    println!("total average: {:?}", total_time / n_files as u32);
+    println!("overall average: {:?}", total_time / total_msgs);
 }
 
 fn worker(n_msgs: u32, addr: impl ToSocketAddrs) -> HashMap<&'static str, (Duration, u32)> {

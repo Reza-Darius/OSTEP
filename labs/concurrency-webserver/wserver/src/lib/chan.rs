@@ -93,7 +93,7 @@ impl Channel<SffJob> {
         loop {
             if guard.capacity() > guard.len() {
                 if let Some(front) = guard.front()
-                    && job.file_size < front.file_size
+                    && job.file_size <= front.file_size
                 {
                     guard.push_front(job);
                 } else {
