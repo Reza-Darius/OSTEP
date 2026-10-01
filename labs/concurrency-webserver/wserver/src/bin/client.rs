@@ -1,15 +1,16 @@
-//! setup sending http request
-//!
-//! arguments:
-//! -number of requests to send per thread
-//! -number of threads
-//!
-//! randomize which file to request
-//! measure turnaround time for each file type
-//! mease turnaround time for every file
+// setup sending http request
+//
+// arguments:
+// -number of requests to send per thread
+// -number of threads
+//
+// randomize which file to request
+// measure turnaround time for each file type
+// mease turnaround time for every file
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::{Read, Write};
+use std::net::ToSocketAddrs;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -35,12 +36,12 @@ struct Cli {
 
 fn main() -> Result<()> {
     let args = Cli::parse();
-    let worker_count = args.n_messages / args.threads as u32;
+    let addr = format!("127.0.0.1:{}", args.port);
 
     let res = std::thread::scope(|s| {
         let mut handles = Vec::new();
         for _ in 0..args.threads {
-            handles.push(s.spawn(|| worker(worker_count, args.port)));
+            handles.push(s.spawn(|| worker(args.n_messages, &addr)));
         }
 
         let mut res = Vec::new();
@@ -70,40 +71,57 @@ fn aggregate_results(data: Vec<HashMap<&'static str, (Duration, u32)>>) {
             acc
         });
 
-    for (file, (durr, count)) in res {
-        let average = durr / count;
+    let res = res
+        .into_iter()
+        .map(|(file, (durr, count))| (file, durr / count))
+        .collect::<BTreeMap<_, _>>();
+
+    let n_files = res.len();
+    let mut total_time = Duration::default();
+
+    for (file, average) in res {
         println!("average turnaround time for {}: {:?}", file, average);
+        total_time += average;
     }
+
+    println!("total average: {:?}", total_time / n_files as u32);
 }
 
-fn worker(count: u32, port: u16) -> HashMap<&'static str, (Duration, u32)> {
+fn worker(n_msgs: u32, addr: impl ToSocketAddrs) -> HashMap<&'static str, (Duration, u32)> {
     let mut map = HashMap::new();
-    for _ in 0..count {
+    let mut buf = Vec::new();
+
+    for _ in 0..n_msgs {
         let idx = rand::random_range(0..3);
-        let r = send_msg(FILES[idx], port).unwrap();
+        let measurement = send_msg(FILES[idx], &mut buf, &addr).unwrap();
 
         map.entry(FILES[idx])
             .and_modify(|(dur, count)| {
-                *dur += r;
+                *dur += measurement;
                 *count += 1;
             })
-            .or_insert((r, 1));
+            .or_insert((measurement, 1));
+
+        buf.clear();
     }
     map
 }
 
-fn send_msg(file: &str, port: u16) -> Result<Duration> {
-    let mut stream = std::net::TcpStream::connect(format!("127.0.0.1:{port}"))?;
+fn send_msg(file: &str, buf: &mut Vec<u8>, addr: impl ToSocketAddrs) -> Result<Duration> {
+    let mut stream = std::net::TcpStream::connect(addr)?;
     write!(
         stream,
         "GET {} HTTP/1.0\r\n\
         \r\n",
         file
     )?;
-    let mut buf = Vec::new();
+
+    // measure the response
     let now = Instant::now();
-    let _ = stream.read_to_end(&mut buf)?;
+    stream.read_to_end(buf)?;
+    let elapsed = now.elapsed();
 
     assert!(buf.starts_with("HTTP/1.0 200 OK\r\n".as_bytes()));
-    Ok(now.elapsed())
+
+    Ok(elapsed)
 }

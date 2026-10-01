@@ -4,6 +4,7 @@ use crate::{
     http::read_stream,
 };
 use anyhow::Result;
+use tracing::info;
 use std::{net::TcpListener, os::unix::fs::MetadataExt, path::Path};
 
 pub fn run(
@@ -17,7 +18,7 @@ pub fn run(
     let addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&addr)?;
 
-    eprintln!(
+    info!(
         "listening on {addr}, basedir: {}, with: {w_count} threads, buf_size: {}, schedule: {}",
         std::path::absolute(basedir)?.display(),
         buf_size,

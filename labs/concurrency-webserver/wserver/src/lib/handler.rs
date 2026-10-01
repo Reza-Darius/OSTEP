@@ -41,11 +41,11 @@ pub fn sff_worker(basedir: &Path, queue: Channel<SffJob>) {
     loop {
         // thread::sleep(Duration::from_secs(1));
         let job = queue.pop_front();
-        println!("got job");
+        // println!("got job");
         if let Err(e) = handle_sff_job(basedir, job) {
             eprintln!("couldnt handle job: {e}");
         };
-        println!("job done");
+        // println!("job done");
     }
 }
 

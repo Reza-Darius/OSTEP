@@ -19,6 +19,8 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
+
     let args = Cli::parse();
     wserver::server::run(
         args.basedir.leak(),
