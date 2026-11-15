@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+libc = "0.2.191"
 quanta = "0.13.0"
-rustix = { version = "1.1.6", features = ["thread"] }
