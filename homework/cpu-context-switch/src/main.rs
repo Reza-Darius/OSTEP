@@ -23,9 +23,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut set: libc::cpu_set_t = mem::zeroed();
         libc::CPU_SET(0, &mut set);
         let pid = libc::getpid();
-        let rusage =
-            libc::sched_setaffinity(pid, mem::size_of::<libc::cpu_set_t>(), &mut set as *const _);
-        if rusage == -1 {
+        if libc::sched_setaffinity(pid, mem::size_of::<libc::cpu_set_t>(), &mut set as *const _)
+            == -1
+        {
             let err = std::io::Error::last_os_error();
             eprintln!("failed to set cpu affinity {}", err);
             return Err(err.into());
@@ -49,8 +49,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     unsafe {
         let mut usage: libc::rusage = mem::zeroed();
-        let rusage = libc::getrusage(libc::RUSAGE_SELF, &mut usage as *mut _);
-        if rusage == -1 {
+        if libc::getrusage(libc::RUSAGE_SELF, &mut usage as *mut _) == -1 {
             let err = std::io::Error::last_os_error();
             eprintln!("failed to call getrusage() {}", err);
             return Err(err.into());
