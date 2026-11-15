@@ -13,8 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let num_iterations: u32 = args[0].parse::<u32>()?;
 
     if args.is_empty() {
-        eprintln!("please provide the number of iterations");
-        std::process::exit(1)
+        return Err("please provide the number of iterations".into());
     }
 
     // we pin the process to a CPU core to reduce any measurement noise caused by cache
