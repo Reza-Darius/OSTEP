@@ -1,5 +1,7 @@
 use std::{
-    error::Error, io::{Read, Write, stdin, stdout}, mem,
+    error::Error,
+    io::{Read, Write, stdin, stdout},
+    mem,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -26,9 +28,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut buf = [0; 1];
     for _ in 0..num_iterations {
-        let _ = reader.read(&mut buf);
-        let _ = writer.write(&buf);
-        writer.flush();
+        _ = reader.read(&mut buf).unwrap();
+        _ = writer.write(&buf).unwrap();
+        writer.flush().unwrap();
     }
 
     Ok(())

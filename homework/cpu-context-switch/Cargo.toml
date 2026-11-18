@@ -14,3 +14,4 @@ path ="src/main.rs"
 [dependencies]
 libc = "0.2.191"
 quanta = "0.13.0"
+tokio = { version = "1.54.1", features = ["full"] }
