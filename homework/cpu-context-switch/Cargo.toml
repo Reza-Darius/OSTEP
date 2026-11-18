@@ -3,6 +3,14 @@ name = "cpu-context-switch"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "child_process"
+path ="src/ping_pong.rs"
+
+[[bin]]
+name = "main"
+path ="src/main.rs"
+
 [dependencies]
 libc = "0.2.191"
 quanta = "0.13.0"
