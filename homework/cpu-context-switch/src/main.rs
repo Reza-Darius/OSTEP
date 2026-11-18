@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(err.into());
         }
     }
+
     println!("testing processes:");
     measure_cw(num_iterations, process_test)?;
     println!();
@@ -42,7 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     measure_cw(num_iterations, thread_test)?;
     println!();
 
-    println!("testing green threads with channel:");
+    println!("testing green threads with pipes:");
     measure_cw(num_iterations, async_pipes)?;
     println!();
 
@@ -63,7 +64,7 @@ fn process_test(num_iterations: u32) -> Result<(), Box<dyn Error>> {
     let mut writer = child.stdin.take().unwrap();
     let reader = child.stdout.take().unwrap();
 
-    // write one thing such that the thread doesnt block indefinitely
+    // write one piece such that the child doesnt block indefinitely
     let _ = writer.write(&[0u8; 1]).unwrap();
 
     let now = quanta::Instant::now();
@@ -82,11 +83,11 @@ fn thread_test(num_iterations: u32) -> Result<(), Box<dyn Error>> {
     let (p1_reader, mut p1_writer) = io::pipe()?;
     let (p2_reader, p2_writer) = io::pipe()?;
 
-    _ = std::thread::spawn(move || {
+    let handle = std::thread::spawn(move || {
         ping_pong(p1_reader, p2_writer, num_iterations);
     });
 
-    // write one thing such that the thread doesnt block indefinitely
+    // write one piece such that the thread doesnt block indefinitely
     let _ = p1_writer.write(&[0u8; 1]).unwrap();
 
     let now = quanta::Instant::now();
@@ -97,6 +98,8 @@ fn thread_test(num_iterations: u32) -> Result<(), Box<dyn Error>> {
         "average context switch duration {:?}",
         elapsed.div_f32(n_switches)
     );
+
+    handle.join().unwrap();
     Ok(())
 }
 
