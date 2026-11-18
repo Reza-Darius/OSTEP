@@ -159,7 +159,6 @@ fn async_pipes(num_iterations: u32) -> Result<(), Box<dyn Error>> {
         });
 
         set.spawn(async move {
-
             let now = quanta::Instant::now();
             let mut buf = [0; MSG_LEN];
             for _ in 0..num_iterations {
@@ -195,7 +194,7 @@ fn measure_cw(
     Ok(())
 }
 
-/// returns the voluntary and involunatry amount of context switches since the process was created
+/// returns the amount of voluntary and involunatry context switches since the process was created
 fn context_switch_info() -> Result<(i64, i64), Box<dyn Error>> {
     unsafe {
         let mut usage: libc::rusage = mem::zeroed();
