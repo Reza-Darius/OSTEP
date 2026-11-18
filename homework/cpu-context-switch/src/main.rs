@@ -195,6 +195,7 @@ fn measure_cw(
     Ok(())
 }
 
+/// returns the voluntary and involunatry amount of context switches since the process was created
 fn context_switch_info() -> Result<(i64, i64), Box<dyn Error>> {
     unsafe {
         let mut usage: libc::rusage = mem::zeroed();
