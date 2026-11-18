@@ -1,5 +1,10 @@
 use std::{
-    env, error::Error, io::{self, PipeReader, PipeWriter, Read, Write}, mem, path::Path, process::Stdio,
+    env,
+    error::Error,
+    io::{self, Read, Write},
+    mem,
+    path::Path,
+    process::Stdio,
 };
 
 const MSG_LEN: usize = 1;
@@ -34,6 +39,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     thread_test(num_iterations)?;
     Ok(())
 }
+
 fn process_test(num_iterations: u32, child_path: &Path) -> Result<(), Box<dyn Error>> {
     let mut child = std::process::Command::new(child_path)
         .arg(num_iterations.to_string())
