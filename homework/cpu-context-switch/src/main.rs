@@ -1,10 +1,5 @@
 use std::{
-    env,
-    error::Error,
-    io::{self, Read, Write},
-    mem,
-    path::Path,
-    process::Stdio,
+    env, error::Error, io::{self, Read, Write}, mem, path::Path, process::Stdio, time::Duration,
 };
 use tokio::io::AsyncWriteExt;
 use tokio::{io::AsyncReadExt, task::JoinSet};
@@ -34,6 +29,13 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Err(err.into());
         }
     }
+
+    let mut total = Duration::new(0, 0);
+    for _ in 0..num_iterations {
+        let now = quanta::Instant::now();
+        total += now.elapsed();
+    }
+    println!("overhead of timing calls {:?}", total.div_f32(num_iterations as f32));
 
     println!("testing processes:");
     measure_cw(num_iterations, process_test)?;
@@ -178,6 +180,7 @@ fn async_pipes(num_iterations: u32) -> Result<(), Box<dyn Error>> {
     })
 }
 
+/// runs the closure and prints the amount of context switches that occured
 fn measure_cw(
     num_iterations: u32,
     test: impl FnOnce(u32) -> Result<(), Box<dyn Error>>,
